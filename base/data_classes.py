@@ -187,7 +187,7 @@ class PlanningAgentResponse(BaseModel):
         description="The thought process used to break down the goal into the logical sequence of steps below. Empty string if needs_clarification is true."
     )
     steps: list[PlanStep] = Field(
-        description="The ordered sequence of actionable steps to achieve the goal. Empty list if needs_clarification is true."
+        description="The ordered sequence of actionable steps to achieve the goal. Empty list if needs_clarification is true or the user declined further action."
     )
     max_iterations: int = Field(
         description=(

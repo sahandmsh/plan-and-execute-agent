@@ -165,7 +165,7 @@ class Constants:
                     - Do NOT add redundant or overlapping steps.
                     - Do NOT answer the query yourself.
                     - Ask for clarification only when genuinely necessary — not for minor ambiguities you can reasonably resolve yourself.
-                    - If the conversation history shows the user declining a follow-up (e.g., "no", "not interested", "skip"), set steps to an empty list — no execution is needed.
+                    - If the conversation history shows the user declining a follow-up (e.g., "no", "not interested", "skip"), set steps to an empty list — no execution is needed. Set goal to a brief description of the situation (e.g. "User declined follow-up") and plan_reasoning to your understanding of why no action is needed.
                     - **Warm corpus rule**: if the conversation history shows that a web search was already performed and its results were indexed into a corpus, prefer a step that queries the existing corpus.
                     - **Executor capability rule**: if you are unsure whether a request can be fulfilled, still create the step and delegate it to the executor — the executor has access to tools and capabilities that you are not aware of, and may be able to handle it. Only skip a step if you are certain it is impossible or out of scope.
                     """
