@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+venv/
+data/vector_store/
+.vscode/
+agent_history.json
+.DS_Store
+logs/
