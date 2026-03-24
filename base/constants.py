@@ -81,6 +81,19 @@ class Constants:
                     ### CONSTRAINTS
                     - Do NOT call a tool if you already have its result in the observations provided.
                     - Do NOT call multiple tools for information that a single tool can fully provide.
+                    - **No-tool rule**: if the step is purely a reasoning, summarization, analysis,
+                      comparison, rewriting, or synthesis task that can be completed entirely from
+                      the observations already provided or from the model's own knowledge — call
+                      'internal_knowledge' and use the result to answer directly. Do NOT call
+                      'rag_query' or 'web_search' just because a tool must be called.
+                    - **Internal-knowledge-first rule**: if the step asks about general knowledge,
+                      definitions, stable facts, science, history, math, reasoning, or coding —
+                      anything whose answer does NOT depend on current events or real-time data —
+                      call 'internal_knowledge' first. If the internal synthesizer reports the
+                      result is insufficient or missing key information, escalate to other available tools.
+                    - **Temporal-query rule**: if the step involves current events, recent news,
+                      live data, prices, or anything that may have changed recently, go directly to
+                      'web_search' — do NOT waste a round-trip on 'internal_knowledge'.
                     - **Corpus-first rule**: if the observations or step description indicate that a
                       corpus was already populated by a prior web search, use RAG on that corpus 
                       BEFORE calling 'web_search'. Only call 'web_search' in a subsequent iteration 
@@ -101,16 +114,18 @@ class Constants:
 
                     ### YOUR TASKS
                     1. **Analyze**: Compare the tool results against the requirements of the Step.
-                    2. **Synthesize**: If new info was found, condense it into a concise, factual summary. 
-                    3. **Decide**: Is the information sufficient to consider this specific step "Resolved"?
-                    4. Return early stop True if resolved, otherwise False.
-                    5. If early stop is False, specify exactly what information is still missing in the "missing_info" field. Be as specific as possible about what data point we are still hunting for.
-
+                    2. **Synthesize**: Condense all findings into a concise, factual summary.
+                    3. **Decide**: Set early_stop=True unless there is a named, specific piece of
+                       information that is still missing AND is retrievable by another tool call.
+                       Partial answers, vague uncertainty, or a desire for more detail are NOT
+                       reasons to continue — stop and let the final synthesizer work with what
+                       is available.
+                    4. If early_stop=False, populate "missing_info" with exactly what is missing.
 
                     ### CONSTRAINTS
                     - DO NOT answer the original user query. 
                     - DO NOT invent information.
-                    - If tool call resulted in failure, analyze error and provide insight in the summary field.
+                    - If a tool call failed, summarize the error and set early_stop=False with the missing_info describing what to retry.
                     """
                 )
 
@@ -159,21 +174,23 @@ class Constants:
             FINAL_COMPILER = Instruction(
                 """
                 ### ROLE
-                You are a final answer compiler. A multi-step plan has been executed and each step's result is provided below.
+                You are a final answer compiler for a conversational agent.
 
                 ### YOUR TASKS
-                1. Combine all step results into a single, complete, and coherent answer to the original user query.
-                2. Present the answer in a clear, well-structured format appropriate to the query.
-                3. Suggest one context-aware follow-up to offer the user — something that naturally extends the topic just discussed.
+                1. If step results are provided, combine them into a single, complete, and coherent
+                   answer to the original user query. Present it in a clear, well-structured format.
+                2. If no step results are provided, use the conversation history to respond
+                   naturally and in context — e.g. acknowledge a declined follow-up, answer a
+                   simple conversational message, or invite the user to ask something new.
+                3. Suggest one context-aware follow-up where appropriate.
 
                 ### CONSTRAINTS
-                - Use ONLY the provided step results. Do NOT add outside knowledge or speculation.
+                - When step results are provided, use ONLY those results. Do NOT add outside knowledge or speculation.
                 - Do NOT mention steps, the planning process, or internal mechanics.
                 - Do NOT call any tools.
-                - The follow-up must be genuinely relevant to the answer — not generic filler. Leave follow_up_question empty if nothing natural comes to mind.
-                - Phrase the follow-up as a conversational offer, not a bare question. Use a
-                  suggestive tone such as "Would you like to know …?", "Do you want to explore …?",
-                  or "Shall I tell you more about …?" — never a direct open question like "What is …?"
+                - The follow-up must be genuinely relevant — not generic filler. Leave follow_up_question empty if nothing natural comes to mind.
+                - Phrase the follow-up as a conversational offer: "Would you like to know …?",
+                  "Do you want to explore …?", "Shall I tell you more about …?" — never a bare question.
                 """
             )
 
@@ -245,6 +262,16 @@ class Constants:
                 """
             )
 
+        class InternalKnowledge:
+            DIRECT_RESPONSE = Instruction(
+                """
+                You are an internal knowledge agent. Answer the given question or task
+                using your own training knowledge.
+                - Be concise and factual.
+                - If you are not confident in the answer, say so explicitly rather than guessing.
+                """
+            )
+
     class CorpusManager:
         """Constants for RAG corpus management."""
 
@@ -261,13 +288,22 @@ class Constants:
         class InternalKnowledgeTool:
             NAME = "internal_knowledge"
             DESCRIPTION = """
-                Uses the model's own training knowledge.
-                Only use this when the step requires pure reasoning, math, coding, or a definition
-                of a timeless concept AND no retrieval or search tool could provide better or more
-                current information.
-                DO NOT use if the answer depends on facts, events, data, or anything that exists
-                outside the model — even partially. When in doubt, prefer a retrieval or search tool.
+                Uses the llm training internal knowledge to answer questions that do NOT require
+                up-to-date or real-time information.
+                PREFER this tool for: general knowledge, definitions, concepts, science, history,
+                mathematics, reasoning, coding, explanations of stable facts, or anything whose
+                answer does not change over time.
+                DO NOT use this tool if the step requires current events, live data, recent news,
+                prices, sports scores, weather, or any information that may have changed since the
+                model's training cutoff. Use web_search for those cases instead.
                 """
+
+            class Parameters:
+                class Query:
+                    NAME = "query"
+                    DESCRIPTION = (
+                        "The question or task to answer using the model's internal knowledge."
+                    )
 
         """Identifiers for registered agent tools."""
 

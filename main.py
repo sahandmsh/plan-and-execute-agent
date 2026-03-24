@@ -119,7 +119,7 @@ if __name__ == "__main__":
     web_search_tool = tool_generator.create_web_search_tool(web_search_handler)
 
     # Fallback tool that uses the model's parametric (internal) knowledge directly
-    internal_knowledge_tool = tool_generator.create_internal_knowledge_tool()
+    internal_knowledge_tool = tool_generator.create_internal_knowledge_tool(generative_model)
 
     tool_manager = ToolManager(Constants.Tools.SupportedLLMs.GEMINI)
     tool_manager.add_tool(datetime_tool)

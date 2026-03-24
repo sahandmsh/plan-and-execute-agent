@@ -34,7 +34,7 @@ It serves both as a learning project and a portfolio demonstration of agentic AI
 - **`clear_corpus`** — Wipes all documents from a named corpus and resets its index
 - **`get_current_datetime`** — Returns the current date and time
 - **`get_days_since_epoch`** — Returns the number of days between a target date and Unix epoch
-- **`internal_knowledge`** — Signals the executor to use the model's parametric knowledge directly (for pure reasoning, math, definitions, etc.)
+- **`internal_knowledge`** — Calls the model with a `query` parameter and returns an answer using the model's parametric knowledge. Preferred for general knowledge, definitions, science, history, math, reasoning, and coding — anything that does not require live or time-sensitive data.
 
 ### Hybrid RAG Pipeline
 - Dense bi-encoder (FAISS `IndexFlatIP` with `all-MiniLM-L6-v2`) for fast semantic retrieval
@@ -69,7 +69,7 @@ plan-and-execute-agent/
 │           ├── rag_handler.py           # RAGHandler: full RAG pipeline + corpus management tools
 │           ├── web_search_handler.py    # WebSearchHandler: live search → corpus ingestion → retrieval
 │           ├── datetime_handler.py      # get_current_datetime(), get_days_since_epoch()
-│           └── internal_knowledge_handler.py  # use_internal_knowledge() fallback tool
+│           └── internal_knowledge_handler.py  # use_internal_knowledge(query, generative_model): calls LLM with DIRECT_RESPONSE prompt
 ├── rag/
 │   ├── rag_corpus_manager.py            # Document chunking, embedding, FAISS & BM25 indexing
 │   ├── rag_content_retriever.py         # Hybrid retrieval + cross-encoder re-ranking (corpus-agnostic)
@@ -220,15 +220,16 @@ All prompts are defined in `Constants.Instructions` in `base/constants.py`:
 | Constant | Stage | Purpose |
 |---|---|---|
 | `PlanAndExecuteAgent.PLANNER` | Clarification & Planning | Decompose query into steps; ask for clarification when needed |
-| `PlanAndExecuteAgent.Executor.EXECUTOR_DISPATCHER` | ReAct — Act | Select and call the right tool(s) for the current step |
-| `PlanAndExecuteAgent.Executor.EXECUTOR_INTERNAL_SYNTHESIZER` | ReAct — Reflect | Evaluate tool results; decide early-stop or continue |
+| `PlanAndExecuteAgent.Executor.EXECUTOR_DISPATCHER` | ReAct — Act | Select and call the right tool(s) using explicit routing rules: no-tool rule (reasoning/summarization → `internal_knowledge`), internal-knowledge-first (stable facts), temporal-query (live data → `web_search`), corpus-first (warm corpus → RAG before re-searching) |
+| `PlanAndExecuteAgent.Executor.EXECUTOR_INTERNAL_SYNTHESIZER` | ReAct — Reflect | Evaluate tool results; set `early_stop=True` when the step is fully answerable, `False` only when a named specific piece of information is still missing — partial answers or vague uncertainty are not reasons to continue |
 | `PlanAndExecuteAgent.Executor.EXECUTOR_FINAL_SYNTHESIZER` | Step synthesis | Produce the final answer for one step from all observations |
-| `PlanAndExecuteAgent.FINAL_COMPILER` | Final synthesis | Combine all step results into the agent's final answer |
+| `PlanAndExecuteAgent.FINAL_COMPILER` | Final synthesis | Combine all step results into the agent's final answer; when no steps were executed (e.g. user declined a follow-up), respond naturally using the conversation history |
 | `WebSearch.QUERY_OPTIMIZER` | Web search | Compress user query into a high-density search engine query |
 | `RAG.QUERY_REWRITER` | RAG retrieval | Rewrite query for maximum recall; expand abbreviations and add synonyms |
 | `RAG.CONTEXT_SUMMARIZER` | RAG retrieval | Summarize a retrieved passage relative to the query |
 | `RAG.RESPONSE_GENERATOR` | RAG generation | Generate a grounded answer with `[N]` inline citations |
 | `RAG.CITATION_CHECKER` | RAG verification | Verify every claim against source passages; return `pass/partial/fail` verdict |
+| `InternalKnowledge.DIRECT_RESPONSE` | Internal knowledge tool | System prompt for the `internal_knowledge` tool's own generative model call; logs as `caller: "direct_response"` |
 
 ## 💡 Usage Examples
 
@@ -398,15 +399,15 @@ Runs a single plan step via a ReAct (Reason + Act) loop.
 - `execute_step(step_description, max_iterations, context)` — Dispatches tool calls, collects observations, evaluates progress via the internal synthesizer, and produces a final `StepResult` via the final synthesizer.
 
 **Three LLM roles per step:**
-- `EXECUTOR_DISPATCHER` — Selects and calls tools based on the step description and current observations
-- `EXECUTOR_INTERNAL_SYNTHESIZER` — Audits tool results; sets `early_stop=True` when the step is resolved
+- `EXECUTOR_DISPATCHER` — Selects and calls tools based on the step description and current observations, following explicit routing rules: pure reasoning/summarization steps go to `internal_knowledge`; stable general knowledge uses `internal_knowledge` first and escalates only if insufficient; time-sensitive queries go directly to `web_search`; warm corpora are queried via RAG before triggering a new web search
+- `EXECUTOR_INTERNAL_SYNTHESIZER` — Audits tool results; sets `early_stop=True` when the step is fully answerable from current observations, `False` only when a concrete specific piece of information is still missing
 - `EXECUTOR_FINAL_SYNTHESIZER` — Produces the definitive `StepResult.answer` from all observations
 
 ### Orchestrator (`agent/orchestrator.py`)
 Sequences step execution and compiles the final answer.
 
 **Key function:**
-- `run_orchestrator(user_prompt, plan, generative_model, executor, chat_history_manager)` — Iterates over `plan.steps`, feeds prior step results as context, and calls the `FINAL_COMPILER` prompt to produce a `FinalSynthesisResponse`.
+- `run_orchestrator(user_prompt, plan, generative_model, executor, chat_history_manager)` — Iterates over `plan.steps`, feeds prior step results as context, and calls the `FINAL_COMPILER` prompt to produce a `FinalSynthesisResponse`. When `plan.steps` is empty (e.g. user declined a follow-up), the conversation history is included in the prompt so the `FINAL_COMPILER` can respond naturally in context rather than receiving a broken empty prompt.
 
 ### Clarification (`agent/interaction/clarification.py`)
 Resolves ambiguity before planning begins.
@@ -433,7 +434,7 @@ Factory class with static methods for creating each tool instance.
 - `create_clear_corpus_tool(rag_handler)` — `clear_corpus` tool
 - `create_datetime_tool()` — `get_current_datetime` tool
 - `create_days_since_epoch_tool()` — `get_days_since_epoch` tool
-- `create_internal_knowledge_tool()` — `internal_knowledge` fallback tool
+- `create_internal_knowledge_tool(generative_model)` — `internal_knowledge` tool; accepts a `query` parameter at runtime and calls the generative model with `InternalKnowledge.DIRECT_RESPONSE` to return a real answer rather than a static signal string
 
 ### RAGHandler (`agent/tools/tool_handlers/rag_handler.py`)
 Owns the full RAG pipeline end-to-end and exposes it as agent-callable tools.

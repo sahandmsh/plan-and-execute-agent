@@ -1,13 +1,19 @@
-from base.data_classes import ToolResult
+from base.constants import Constants
+from base.data_classes import GenerativeModel, ToolResult
 
 
-def use_internal_knowledge() -> ToolResult:
-    """Uses the internal knowledge of the generative model to answer a question.
+def use_internal_knowledge(query: str, generative_model: GenerativeModel) -> ToolResult:
+    """Uses the generative model's own knowledge to answer a question directly.
+
+    Args:
+        query: The question or task to answer using internal knowledge.
+        generative_model: The generative model to use for answering.
 
     Returns:
-        ToolResult: .text is a message indicating that internal knowledge is being used to answer;
-                    .data is a note that internal knowledge is sufficient to answer the question without external tools.
+        ToolResult: .text contains the model's answer based on its training knowledge.
     """
-    return ToolResult(
-        text="Use your internal knowledge to answer as it is sufficient to answer the question without external tools.",
+    response = generative_model.generate(
+        prompt=query,
+        system_instructions=Constants.Instructions.InternalKnowledge.DIRECT_RESPONSE,
     )
+    return ToolResult(text=response.text or "No answer could be generated.")

@@ -28,6 +28,7 @@ def run_orchestrator(
 
     print(f"Goal: {plan.goal}")
     print(f"Plan reasoning: {plan.plan_reasoning}\n")
+
     step_results_context: list[str] = []
     for step in plan.steps:
         print(f"\n{'='*60}\nStep {step.step_number}: {step.step_description}\n{'-' * 60}")
@@ -45,10 +46,12 @@ def run_orchestrator(
         f"- {step.step_description}\n  Result: {ans}"
         for step, ans in zip(plan.steps, step_results_context)
     )
+    history_str = chat_history_manager.get_history_str()
     final_synthesis_prompt = (
+        f"Conversation history:\n{history_str}\n\n"
         f"Original user request: {user_prompt}\n\n"
         f"Goal: {plan.goal}\n\n"
-        f"Step results:\n{compiled_results}"
+        f"Step results:\n{compiled_results if compiled_results else 'No steps were executed.'}\n\n"
     )
     final_response = generative_model.generate(
         prompt=final_synthesis_prompt,

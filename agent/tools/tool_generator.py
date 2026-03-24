@@ -1,9 +1,10 @@
 from base.constants import Constants
-from base.data_classes import ParameterDetails, Tool, ToolResult
+from base.data_classes import GenerativeModel, ParameterDetails, Tool, ToolResult
 from agent.tools.tool_handlers.datetime_handler import (
     get_current_datetime,
     get_days_since_epoch,
 )
+from agent.tools.tool_handlers.internal_knowledge_handler import use_internal_knowledge
 from agent.tools.tool_handlers.rag_handler import RAGHandler
 from agent.tools.tool_handlers.web_search_handler import WebSearchHandler
 
@@ -12,7 +13,7 @@ class CreateTools:
     """A centralized class for creating Tool instances."""
 
     @staticmethod
-    def create_internal_knowledge_tool() -> Tool:
+    def create_internal_knowledge_tool(generative_model: GenerativeModel) -> Tool:
         """Create the internal knowledge tool.
 
         Returns:
@@ -21,10 +22,14 @@ class CreateTools:
         return Tool(
             name=Constants.Tools.InternalKnowledgeTool.NAME,
             description=Constants.Tools.InternalKnowledgeTool.DESCRIPTION,
-            parameters={},
-            handler=lambda: ToolResult(
-                text="Use internal knowledge to answer."
-            ),  # Simple handler for demonstration
+            parameters={
+                Constants.Tools.InternalKnowledgeTool.Parameters.Query.NAME: ParameterDetails(
+                    type=Constants.Tools.Parameters.Types.STRING,
+                    description=Constants.Tools.InternalKnowledgeTool.Parameters.Query.DESCRIPTION,
+                    required=True,
+                )
+            },
+            handler=lambda query: use_internal_knowledge(query, generative_model),
         )
 
     @staticmethod
